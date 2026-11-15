@@ -20,7 +20,7 @@
 <div class="previewwrap"><div class="muted" style="margin-bottom:10px;font-weight:700">PRÉVIA AO VIVO</div><div class="phone"><div class="notch"></div><div class="screen"><div class="cover" id="pvCover">Seu restaurante</div><div class="phonebody"><h3 id="pvName">Nome do restaurante</h3><div class="sub" id="pvDesc">Cardápio digital</div><div id="previewItems"></div></div></div></div><p class="hint">A prévia muda enquanto você edita.</p></div></div>
 <div class="panel" style="margin-top:16px"><div class="sectionhead"><h2>Cardápios salvos</h2></div><div id="savedMenus" class="list"><div class="empty">Nenhum cardápio salvo ainda.</div></div></div>
 </section>
-<section class="page" id="prospecting"><div class="panel"><div class="sectionhead"><div><h2>Prospecção de restaurantes</h2><div class="muted">Exemplos demonstrativos para organizar contatos comerciais.</div></div><button class="btn primary" id="addProspect">+ Novo contato</button></div><div class="field"><input id="prospectSearch" placeholder="Buscar por restaurante, bairro ou categoria..."></div><div id="prospectList" class="list"></div><p class="hint">Os restaurantes abaixo são exemplos fictícios, não resultados de uma busca real por estabelecimentos próximos.</p></div></section>
+<section class="page" id="prospecting"><div class="panel"><div class="sectionhead"><div><h2>Prospecção de restaurantes</h2><div class="muted">Exemplos demonstrativos para organizar contatos comerciais.</div></div><div class="actions"><button class="btn" id="findNearby">⌖ Encontrar perto de mim</button><button class="btn primary" id="addProspect">+ Novo contato</button></div></div><p class="hint" id="locationStatus">Use “Encontrar perto de mim” para buscar restaurantes reais próximos. O navegador pedirá sua permissão de localização.</p><div class="field"><input id="prospectSearch" placeholder="Buscar por restaurante, bairro ou categoria..."></div><div id="prospectList" class="list"></div><p class="hint">Os restaurantes abaixo são exemplos fictícios, não resultados de uma busca real por estabelecimentos próximos.</p></div></section>
 <section class="page" id="qrs"><div class="panel"><h2>Gerador de QR Code</h2><p class="muted">Escolha um cardápio salvo para gerar um código que abre a página digital.</p><div class="field"><label>Cardápio</label><select id="qrSelect"><option value="">Selecione um cardápio</option></select></div><button class="btn primary" id="generateQr">Gerar QR Code</button><div class="qrbox" id="qrOutput"><div class="empty">Seu QR Code aparecerá aqui.</div></div><p class="hint">O QR Code abre o link público codificado do cardápio. Para endereço permanente que continue igual depois de alterações, será necessário conectar banco de dados e publicação pública.</p></div></section>
 </main></div>
 <script>
@@ -51,6 +51,38 @@ $('#newMenu').onclick=()=>{if(!confirm('Começar um cardápio novo?'))return;$('
 function renderSaved(){$('#savedMenus').innerHTML=menus.length?menus.map((m,i)=>'<div class="restaurant"><div><strong>'+safe(m.restaurant)+' — '+safe(m.title)+'</strong><small>'+m.categories.reduce((n,c)=>n+c.dishes.length,0)+' pratos • salvo no navegador</small></div><div class="actions"><button class="btn small" data-load="'+i+'">Editar</button><button class="btn small" data-menuqr="'+i+'">QR Code</button></div></div>').join(''):'<div class="empty">Nenhum cardápio salvo ainda.</div>';$('#countMenus').textContent=menus.length;fillQr()}
 $('#savedMenus').addEventListener('click',e=>{const t=e.target;if(t.dataset.load!==undefined){const m=menus[+t.dataset.load];$('#restaurantName').value=m.restaurant;$('#menuName').value=m.title;$('#restaurantDesc').value=m.description||'';$('#currency').value=m.currency||'R$';$('#accent').value=m.color||'#23884f';categories=JSON.parse(JSON.stringify(m.categories||[]));renderCategories();showPage('editor')}if(t.dataset.menuqr!==undefined){showPage('qrs');$('#qrSelect').value=t.dataset.menuqr;makeQr()}});
 function renderProspects(){const q=$('#prospectSearch').value.toLowerCase();$('#prospectList').innerHTML=prospects.filter(p=>(p.name+p.category+p.area).toLowerCase().includes(q)).map((p,i)=>'<div class="restaurant"><div><strong>'+safe(p.name)+'</strong><small>'+safe(p.category)+' • '+safe(p.area)+' • <span class="badge">'+safe(p.status)+'</span></small></div><div class="actions"><button class="btn small" data-prospect-qr="'+i+'">Gerar QR</button></div></div>').join('')||'<div class="empty">Nenhum restaurante encontrado.</div>'}
+
+$('#findNearby').onclick=async()=>{
+ const status=$('#locationStatus'),btn=$('#findNearby');
+ if(!navigator.geolocation){status.textContent='Este navegador não oferece acesso à localização.';return}
+ btn.disabled=true;status.textContent='Aguardando sua permissão de localização...';
+ navigator.geolocation.getCurrentPosition(async pos=>{
+  const {latitude:lat,longitude:lon}=pos.coords;
+  status.textContent='Localização encontrada. Procurando restaurantes próximos...';
+  const query='[out:json][timeout:20];(nwr(around:5000,'+lat+','+lon+')["amenity"~"restaurant|cafe|fast_food|bar|pub"];);out center tags 60;';
+  const endpoints=['https://overpass.nchc.org.tw/api/interpreter','https://overpass-api.de/api/interpreter','https://overpass.openstreetmap.ru/cgi/interpreter'];
+  let data=null,lastError='';
+  for(const endpoint of endpoints){
+   try{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),22000);
+    const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(query),signal:controller.signal});
+    clearTimeout(timer);
+    if(!response.ok)throw new Error('Servidor respondeu '+response.status);
+    data=await response.json();if(data&&Array.isArray(data.elements))break;
+   }catch(err){lastError=err.message||'Falha na conexão'}
+  }
+  btn.disabled=false;
+  if(!data){status.textContent='Não foi possível consultar os mapas agora. Tente novamente mais tarde. ('+lastError+')';return}
+  const found=data.elements.filter(x=>x.tags&&x.tags.name).map(x=>{
+   const t=x.tags,kind=t.amenity==='cafe'?'Cafeteria':t.amenity==='fast_food'?'Fast food':t.amenity==='bar'||t.amenity==='pub'?'Bar':'Restaurante';
+   return {name:t.name,category:t.cuisine?kind+' • '+t.cuisine:kind,area:t['addr:suburb']||t['addr:neighbourhood']||t['addr:city']||'Próximo de você',status:'Encontrado perto de você',osmId:x.type+'/'+x.id}
+  });
+  const seen=new Set();const unique=found.filter(p=>{const k=p.osmId;if(seen.has(k))return false;seen.add(k);return true});
+  prospects=prospects.filter(p=>!p.osmId).concat(unique);
+  renderProspects();
+  status.textContent=unique.length?unique.length+' estabelecimentos encontrados em um raio aproximado de 5 km. Resultados do OpenStreetMap.':'Nenhum estabelecimento com nome foi encontrado nesse raio. Tente novamente em outra região.';
+ },err=>{btn.disabled=false;status.textContent=err.code===1?'A localização foi negada. Permita o acesso à localização nas configurações do navegador e tente novamente.':err.code===2?'Não foi possível obter sua localização. Verifique o GPS e tente novamente.':'A localização demorou demais. Tente novamente.'},{enableHighAccuracy:false,timeout:15000,maximumAge:300000});
+};
 $('#prospectSearch').oninput=renderProspects;
 $('#addProspect').onclick=()=>{const name=prompt('Nome do restaurante:');if(!name)return;const area=prompt('Bairro ou região:')||'Não informado';const category=prompt('Categoria:')||'Restaurante';prospects.push({name,area,category,status:'Novo contato'});renderProspects()};
 $('#prospectList').addEventListener('click',e=>{const i=e.target.dataset.prospectQr;if(i!==undefined){const p=prospects[+i];const target=menus[0];if(!target){alert('Crie e salve um cardápio primeiro para gerar um QR Code.');return}showPage('qrs');$('#qrSelect').value='0';makeQr();}});
