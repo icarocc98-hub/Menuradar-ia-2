@@ -18,7 +18,7 @@
 <div class="actions" style="margin-top:18px"><button class="btn primary" id="saveMenu">Salvar cardápio</button><button class="btn" id="newMenu">Novo / Limpar</button></div><p class="hint">Os dados desta demonstração ficam salvos neste navegador. A leitura automática de fotos/PDF por IA será conectada numa próxima etapa.</p>
 </div>
 <div class="previewwrap"><div class="muted" style="margin-bottom:10px;font-weight:700">PRÉVIA AO VIVO</div><div class="phone"><div class="notch"></div><div class="screen"><div class="cover" id="pvCover">Seu restaurante</div><div class="phonebody"><h3 id="pvName">Nome do restaurante</h3><div class="sub" id="pvDesc">Cardápio digital</div><div id="previewItems"></div></div></div></div><p class="hint">A prévia muda enquanto você edita.</p></div></div>
-<div class="panel" style="margin-top:16px"><div class="sectionhead"><h2>Cardápios salvos</h2></div><div id="savedMenus" class="list"><div class="empty">Nenhum cardápio salvo ainda.</div></div></div>
+<div class="panel" style="margin-top:16px"><div class="sectionhead"><h2>Cardápios salvos</h2><div class="actions"><button class="btn small" id="exportMenus">↓ Baixar backup</button><button class="btn small" id="importMenusBtn">↑ Restaurar backup</button><input id="importMenusFile" type="file" accept="application/json,.json" style="display:none"></div></div><p class="hint">Guarde uma cópia dos seus cardápios em arquivo JSON para restaurar quando precisar.</p><div id="savedMenus" class="list"><div class="empty">Nenhum cardápio salvo ainda.</div></div></div>
 </section>
 <section class="page" id="prospecting"><div class="panel"><div class="sectionhead"><div><h2>Prospecção de restaurantes</h2><div class="muted">Exemplos demonstrativos para organizar contatos comerciais.</div></div><div class="actions"><button class="btn" id="findNearby">⌖ Encontrar perto de mim</button><button class="btn primary" id="addProspect">+ Novo contato</button></div></div><p class="hint" id="locationStatus">Use “Encontrar perto de mim” para buscar restaurantes reais próximos. O navegador pedirá sua permissão de localização.</p><div class="field"><input id="prospectSearch" placeholder="Buscar por restaurante, bairro ou categoria..."></div><div id="prospectList" class="list"></div><p class="hint">Os restaurantes abaixo são exemplos fictícios, não resultados de uma busca real por estabelecimentos próximos.</p></div></section>
 <section class="page" id="account"><div class="panel" style="max-width:680px"><div class="sectionhead"><h2>Minha conta</h2><span class="badge">Conta conectada</span></div><p class="muted">Você está conectado ao MenuRadar IA com este e-mail:</p><div class="panel" style="margin:16px 0;background:#0b120e"><strong id="accountEmail">Carregando...</strong></div><p class="hint" id="accountStatus">Dados da sua sessão.</p><button class="btn danger" id="logoutBtn">Sair da conta</button></div></section>
@@ -48,6 +48,25 @@ $('#addCategory').onclick=()=>{categories.push({name:'Nova categoria',dishes:[]}
 function currentMenu(){return {id:Date.now().toString(36),restaurant:$('#restaurantName').value||'Meu restaurante',title:$('#menuName').value||'Cardápio principal',description:$('#restaurantDesc').value,currency:$('#currency').value,color:$('#accent').value,categories:JSON.parse(JSON.stringify(categories)),created:new Date().toISOString()}}
 function saveMenu(){const m=currentMenu();menus.push(m);write('menus',menus);renderSaved();updatePreview();alert('Cardápio salvo!')}
 $('#saveMenu').onclick=saveMenu;
+$('#exportMenus').onclick=()=>{
+ if(!menus.length){alert('Não há cardápios salvos para baixar.');return}
+ const blob=new Blob([JSON.stringify({app:'MenuRadar IA',version:1,exportedAt:new Date().toISOString(),menus},null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='menuradar-backup-cardapios.json';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+};
+$('#importMenusBtn').onclick=()=>$('#importMenusFile').click();
+$('#importMenusFile').onchange=async e=>{
+ const file=e.target.files?.[0];if(!file)return;
+ try{
+  const data=JSON.parse(await file.text());
+  if(!data||!Array.isArray(data.menus))throw new Error('Arquivo não reconhecido. Escolha um backup do MenuRadar IA.');
+  const valid=data.menus.filter(m=>m&&typeof m.restaurant==='string'&&typeof m.title==='string'&&Array.isArray(m.categories)&&m.categories.every(cat=>cat&&typeof cat.name==='string'&&Array.isArray(cat.dishes)));
+  if(!valid.length)throw new Error('O arquivo não contém cardápios válidos.');
+  const merged=new Map(menus.map((m,i)=>[JSON.stringify([m.restaurant,m.title,m.createdAt||i]),m]));
+  valid.forEach((m,i)=>merged.set(JSON.stringify([m.restaurant,m.title,m.createdAt||('import-'+i)]),m));
+  menus=Array.from(merged.values());write('menus',menus);renderSaved();alert(valid.length+' cardápio(s) importado(s).');
+ }catch(err){alert('Não foi possível restaurar: '+err.message)}
+ finally{e.target.value=''}
+};
 $('#newMenu').onclick=()=>{if(!confirm('Começar um cardápio novo?'))return;$('#restaurantName').value='';$('#menuName').value='';$('#restaurantDesc').value='';categories=[{name:'Pratos principais',dishes:[]}];renderCategories()};
 function renderSaved(){$('#savedMenus').innerHTML=menus.length?menus.map((m,i)=>'<div class="restaurant"><div><strong>'+safe(m.restaurant)+' — '+safe(m.title)+'</strong><small>'+m.categories.reduce((n,c)=>n+c.dishes.length,0)+' pratos • salvo no navegador</small></div><div class="actions"><button class="btn small" data-load="'+i+'">Editar</button><button class="btn small" data-menuqr="'+i+'">QR Code</button></div></div>').join(''):'<div class="empty">Nenhum cardápio salvo ainda.</div>';$('#countMenus').textContent=menus.length;fillQr()}
 $('#savedMenus').addEventListener('click',e=>{const t=e.target;if(t.dataset.load!==undefined){const m=menus[+t.dataset.load];$('#restaurantName').value=m.restaurant;$('#menuName').value=m.title;$('#restaurantDesc').value=m.description||'';$('#currency').value=m.currency||'R$';$('#accent').value=m.color||'#23884f';categories=JSON.parse(JSON.stringify(m.categories||[]));renderCategories();showPage('editor')}if(t.dataset.menuqr!==undefined){showPage('qrs');$('#qrSelect').value=t.dataset.menuqr;makeQr()}});
