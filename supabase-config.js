@@ -1,8 +1,7 @@
-// Configure este arquivo com os dados do seu projeto Supabase.
-// Dashboard Supabase > Project Settings > API.
-// Use somente a chave publishable/anon no navegador. Nunca coloque service_role aqui.
-export const SUPABASE_URL = "COLE_A_URL_DO_SEU_PROJETO";
-export const SUPABASE_ANON_KEY = "COLE_SUA_CHAVE_PUBLICA_AQUI";
+// Configuração do projeto Supabase MenuRadar IA.
+// A chave publishable/anon pode ser usada no navegador; nunca use service_role/secret aqui.
+export const SUPABASE_URL = "https://paeswogpyktwyxobpypy.supabase.co";
+export const SUPABASE_ANON_KEY = "sb_publishable_GrTqDdhSdatIgL3oOubCGQ_tu0kvLu0";
 export const isSupabaseConfigured = () =>
   SUPABASE_URL.startsWith("https://") &&
   !SUPABASE_URL.includes("COLE_") &&
