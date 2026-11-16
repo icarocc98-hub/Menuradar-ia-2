@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080d0b"><title>Entrar · MenuRadar IA</title>
+<style>
+:root{--bg:#080d0b;--panel:#101915;--line:#263a2d;--green:#35d07f;--text:#eff8f1;--muted:#91a69a}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:18px;background:radial-gradient(circle at 50% 0,#173321 0,transparent 45%),var(--bg);color:var(--text);font:15px Inter,system-ui,Arial}
+.card{width:min(100%,430px);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:27px;box-shadow:0 24px 70px #0007}.logo{font-size:25px;font-weight:850;margin-bottom:7px}.logo span{color:var(--green)}p{color:var(--muted);font-size:13px;line-height:1.6}.tabs{display:flex;gap:8px;margin:22px 0 16px}.tabs button,.submit,.back{border:1px solid var(--line);border-radius:9px;padding:11px;background:#15231b;color:var(--text);cursor:pointer}.tabs button.active,.submit{background:var(--green);color:#06140b;border-color:var(--green);font-weight:800}.field{margin:13px 0}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}.field input{width:100%;padding:12px;background:#0a120e;color:var(--text);border:1px solid var(--line);border-radius:9px}.submit{width:100%;margin-top:10px}.status{margin-top:13px;font-size:12px;line-height:1.6;color:var(--green);overflow-wrap:anywhere}.back{display:inline-block;text-decoration:none;margin-top:18px;font-size:12px}.hidden{display:none}
+</style></head><body><main class="card"><div class="logo">Menu<span>Radar</span> IA</div><h1 style="font-size:21px;margin:10px 0">Sua área de trabalho</h1><p>Entre na sua conta ou crie seu acesso para preparar a carteira comercial na nuvem.</p>
+<div class="tabs"><button id="loginTab" class="active" type="button">Entrar</button><button id="signupTab" type="button">Criar conta</button></div>
+<form id="authForm"><div class="field hidden" id="nameField"><label>Seu nome</label><input id="fullName" autocomplete="name" placeholder="Como podemos te chamar?"></div><div class="field"><label>E-mail</label><input id="email" type="email" required autocomplete="email" placeholder="voce@email.com"></div><div class="field"><label>Senha</label><input id="password" type="password" required minlength="6" autocomplete="current-password" placeholder="Mínimo de 6 caracteres"></div><button class="submit" id="submit" type="submit">Entrar</button></form><div class="status" id="status" role="status"></div><a class="back" href="index.html">← Voltar ao painel</a></main>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, isSupabaseConfigured } from './supabase-config.js';
+const $=id=>document.getElementById(id);let mode='login';
+function setMode(next){mode=next;$('loginTab').classList.toggle('active',mode==='login');$('signupTab').classList.toggle('active',mode==='signup');$('nameField').classList.toggle('hidden',mode!=='signup');$('submit').textContent=mode==='login'?'Entrar':'Criar minha conta';$('password').autocomplete=mode==='login'?'current-password':'new-password';}
+$('loginTab').onclick=()=>setMode('login');$('signupTab').onclick=()=>setMode('signup');
+if(!isSupabaseConfigured()){$('status').textContent='Configuração pendente: adicione a URL e a chave pública do Supabase no arquivo supabase-config.js.';}
+else{
+ const supabase=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+ const {data:{session}}=await supabase.auth.getSession();if(session)$('status').textContent='Você já está conectado. Abra o painel.';
+ $('authForm').onsubmit=async e=>{e.preventDefault();$('submit').disabled=true;$('status').textContent='Aguarde…';try{const email=$('email').value.trim(),password=$('password').value;let result;if(mode==='signup'){result=await supabase.auth.signUp({email,password,options:{data:{full_name:$('fullName').value.trim()}}});}else{result=await supabase.auth.signInWithPassword({email,password});}if(result.error)throw result.error;if(mode==='signup'&&!result.data.session){$('status').textContent='Cadastro criado! Confira seu e-mail para confirmar a conta e depois entre.';}else{location.href='index.html';}}catch(err){$('status').textContent=err.message||'Não foi possível concluir.';}finally{$('submit').disabled=false;}};
+}
+</script></body></html>
